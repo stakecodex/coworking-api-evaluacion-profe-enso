@@ -16,9 +16,8 @@ Trabajo 2 de Construcción de Software. Es una API para administrar las salas de
 Uso la base de datos que autorizó el profesor (`reservas_db_joserodriguez`). Cada llamada a la API queda anotada en la tabla de auditoría.
 
 ## Cómo probarlo
-1. Encender la API con doble clic en `Abrir-Coworking.bat` (o ejecutando desde Visual Studio).
-2. Doble clic en `Acceso-Usuarios.bat`: abre la pantalla del coworking y Swagger en Chrome.
-3. En Swagger, iniciar sesión con `POST /api/v1/User/login`, copiar el token y pegarlo en el botón *Authorize*.
+1. Doble clic en `Abrir-Demo.bat`: enciende la API y abre en Chrome una sola pestaña con la pantalla del coworking y, al lado, un monitor en vivo de la API (y Swagger).
+2. En Swagger, iniciar sesión con `POST /api/v1/User/login`, copiar el token y pegarlo en el botón *Authorize*.
 
 Las claves y la conexión a la base de datos no están en el repositorio. Hay un ejemplo de cómo configurarlas en `set-env.example.ps1`.
 
