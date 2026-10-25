@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coworking - Reservas</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Segoe UI, Arial, sans-serif; background: #f2f4f8; margin: 0; color: #222; }
+  header { background: #2b3a67; color: #fff; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 20px; margin: 0; }
+  main { max-width: 1000px; margin: 20px auto; padding: 0 16px; }
+  .card { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  h2 { margin-top: 0; font-size: 17px; }
+  input, button { padding: 8px 10px; font-size: 14px; border-radius: 5px; border: 1px solid #bbb; }
+  button { background: #2b3a67; color: #fff; border: none; cursor: pointer; }
+  button:hover { background: #3d4f8a; }
+  button.rojo { background: #c0392b; } button.verde { background: #2e8b57; } button.gris { background: #777; }
+  .fila { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 8px; }
+  label { display: flex; flex-direction: column; font-size: 12px; gap: 3px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e3e3e3; }
+  .tag { padding: 2px 8px; border-radius: 10px; font-size: 12px; color: #fff; }
+  .Libre, .Confirmada { background: #2e8b57; } .Ocupado, .Cancelada { background: #c0392b; } .Pendiente { background: #e08e0b; }
+  #mensaje { position: fixed; bottom: 16px; right: 16px; padding: 12px 18px; border-radius: 6px; color: #fff; display: none; max-width: 380px; }
+  .oculto { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Coworking - Reservas</h1>
+  <div id="sesion" class="oculto"><span id="quien"></span> <button class="gris" onclick="salir()">Cerrar sesión</button></div>
+</header>
+<main>
+
+  <section id="vistaLogin" class="card">
+    <h2>Iniciar sesión</h2>
+    <div class="fila">
+      <label>Correo <input id="email" type="email"></label>
+      <label>Contraseña <input id="password" type="password"></label>
+      <button onclick="login()">Entrar</button>
+      <button class="gris" onclick="mostrarRegistro()">Crear cuenta de cliente</button>
+    </div>
+    <div id="formRegistro" class="oculto">
+      <h2 style="margin-top:14px">Registro de cliente</h2>
+      <div class="fila">
+        <label>Nombre <input id="rNombre"></label>
+        <label>Apellido <input id="rApellido"></label>
+        <label>Correo <input id="rEmail" type="email"></label>
+        <label>Contraseña (mín. 8) <input id="rPassword" type="password"></label>
+        <label>Teléfono <input id="rTelefono"></label>
+        <button class="verde" onclick="registrar()">Registrarme</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="vistaCliente" class="oculto">
+    <div class="card">
+      <h2>Buscar espacios disponibles</h2>
+      <div class="fila">
+        <label>Fecha <input id="fecha" type="date"></label>
+        <label>Desde <input id="hIni" type="time" value="10:00"></label>
+        <label>Hasta <input id="hFin" type="time" value="12:00"></label>
+        <button onclick="buscar()">Buscar</button>
+      </div>
+      <table>
+        <thead><tr><th>Espacio</th><th>Tipo</th><th>Capacidad</th><th>Precio/hora</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="espacios"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>Mis reservas</h2>
+      <table>
+        <thead><tr><th>Espacio</th><th>Inicio</th><th>Fin</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="misReservas"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="vistaAdmin" class="oculto">
+    <div class="card">
+      <h2>Todas las reservas</h2>
+      <table>
+        <thead><tr><th>#</th><th>Cliente</th><th>Espacio</th><th>Inicio</th><th>Fin</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="todas"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>Espacios</h2>
+      <table>
+        <thead><tr><th>Espacio</th><th>Tipo</th><th>Capacidad</th><th>Precio/hora</th><th>Estado</th></tr></thead>
+        <tbody id="espaciosAdmin"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<div id="mensaje"></div>
+
+<script>
+const API = '/api/v1';
+let token = localStorage.getItem('token');
+let rol = null, nombre = '';
+
+const $ = id => document.getElementById(id);
+const fmt = d => new Date(d).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' });
+const money = n => '$' + Number(n).toLocaleString('es-CL');
+
+function aviso(texto, ok = true) {
+  const m = $('mensaje');
+  m.textContent = texto; m.style.background = ok ? '#2e8b57' : '#c0392b'; m.style.display = 'block';
+  setTimeout(() => m.style.display = 'none', 4000);
+}
+
+async function api(ruta, metodo = 'GET', cuerpo) {
+  const r = await fetch(API + ruta, {
+    method: metodo,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+    body: cuerpo ? JSON.stringify(cuerpo) : undefined
+  });
+  if (r.status === 401 && token) { salir(); throw new Error('Sesión expirada o no autorizado'); }
+  if (r.status === 403) throw new Error('No tienes permiso para esta acción');
+  const texto = await r.text();
+  const datos = texto ? JSON.parse(texto) : null;
+  if (!r.ok) {
+    let msg = datos?.detail || datos?.title || 'Error ' + r.status;
+    if (datos?.errors) msg = Object.values(datos.errors).flat().join(' ');
+    throw new Error(msg);
+  }
+  return datos;
+}
+
+function leerToken(t) {
+  const p = JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+  const r = p.role || p['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'];
+  return { rol: Array.isArray(r) ? r[0] : r, email: p.sub || p.email };
+}
+
+function mostrarRegistro() { $('formRegistro').classList.toggle('oculto'); }
+
+async function registrar() {
+  try {
+    await api('/User', 'POST', {
+      nombre: $('rNombre').value, apellido: $('rApellido').value, email: $('rEmail').value,
+      password: $('rPassword').value, telefono: $('rTelefono').value || null
+    });
+    aviso('Cuenta creada. Ahora inicia sesión.');
+    $('email').value = $('rEmail').value; $('password').value = '';
+    $('formRegistro').classList.add('oculto');
+  } catch (e) { aviso(e.message, false); }
+}
+
+async function login() {
+  try {
+    const r = await api('/User/login', 'POST', { email: $('email').value, password: $('password').value });
+    token = r.token; localStorage.setItem('token', token);
+    $('password').value = '';
+    iniciar();
+  } catch (e) { aviso(e.message, false); }
+}
+
+function salir() {
+  token = null; localStorage.removeItem('token');
+  ['vistaCliente', 'vistaAdmin', 'sesion'].forEach(i => $(i).classList.add('oculto'));
+  $('vistaLogin').classList.remove('oculto');
+}
+
+async function iniciar() {
+  if (!token) return salir();
+  try {
+    const t = leerToken(token);
+    rol = t.rol; nombre = t.email;
+  } catch { return salir(); }
+  $('quien').textContent = nombre + ' (' + rol + ')  ';
+  $('sesion').classList.remove('oculto');
+  $('vistaLogin').classList.add('oculto');
+  if (rol === 'Administrador') {
+    $('vistaAdmin').classList.remove('oculto'); $('vistaCliente').classList.add('oculto');
+    cargarAdmin();
+  } else {
+    $('vistaCliente').classList.remove('oculto'); $('vistaAdmin').classList.add('oculto');
+    if (!$('fecha').value) { const d = new Date(); d.setDate(d.getDate() + 1); $('fecha').value = d.toISOString().slice(0, 10); }
+    buscar(); cargarMias();
+  }
+}
+
+function rango() {
+  const f = $('fecha').value;
+  if (!f) throw new Error('Elige una fecha');
+  return { desde: f + 'T' + $('hIni').value + ':00', hasta: f + 'T' + $('hFin').value + ':00' };
+}
+
+async function buscar() {
+  try {
+    const { desde, hasta } = rango();
+    const lista = await api('/Espacios');
+    const filas = await Promise.all(lista.map(async e => {
+      const d = await api(`/Espacios/${e.id}/disponibilidad?desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}`);
+      const est = d.disponible ? 'Libre' : 'Ocupado';
+      return `<tr><td>${e.nombre}</td><td>${e.categoria}</td><td>${e.capacidad}</td><td>${money(e.precioPorHora)}</td>
+        <td><span class="tag ${est}">${est}</span></td>
+        <td>${d.disponible ? `<button class="verde" onclick="reservar(${e.id})">Reservar</button>` : ''}</td></tr>`;
+    }));
+    $('espacios').innerHTML = filas.join('') || '<tr><td colspan="6">No hay espacios.</td></tr>';
+  } catch (e) { aviso(e.message, false); }
+}
+
+async function reservar(id) {
+  try {
+    const { desde, hasta } = rango();
+    const r = await api('/Reservas', 'POST', { espacioId: id, fechaInicio: desde, fechaFin: hasta });
+    aviso(`Reserva creada (${money(r.montoTotal)}). Queda pendiente de aprobación.`);
+    await buscar(); await cargarMias();
+  } catch (e) { aviso(e.message, false); }
+}
+
+function btnCancelar(r) {
+  return r.estado === 'Cancelada' ? '' : `<button class="rojo" onclick="cancelar(${r.id})">Cancelar</button>`;
+}
+
+async function cargarMias() {
+  try {
+    const l = await api('/Reservas/mias');
+    $('misReservas').innerHTML = l.map(r => `<tr><td>${r.espacio}</td><td>${fmt(r.fechaInicio)}</td><td>${fmt(r.fechaFin)}</td>
+      <td>${money(r.montoTotal)}</td><td><span class="tag ${r.estado}">${r.estado}</span></td><td>${btnCancelar(r)}</td></tr>`).join('')
+      || '<tr><td colspan="6">Aún no tienes reservas.</td></tr>';
+  } catch (e) { aviso(e.message, false); }
+}
+
+async function cancelar(id) {
+  try {
+    await api('/Reservas/' + id, 'DELETE');
+    aviso('Reserva cancelada.');
+    rol === 'Administrador' ? cargarAdmin() : (buscar(), cargarMias());
+  } catch (e) { aviso(e.message, false); }
+}
+
+async function confirmar(id) {
+  try { await api(`/Reservas/${id}/confirmar`, 'PUT'); aviso('Reserva aprobada.'); cargarAdmin(); }
+  catch (e) { aviso(e.message, false); }
+}
+
+async function cargarAdmin() {
+  try {
+    const [res, esp] = await Promise.all([api('/Reservas'), api('/Espacios')]);
+    $('todas').innerHTML = res.map(r => `<tr><td>${r.id}</td><td>${r.usuario}</td><td>${r.espacio}</td><td>${fmt(r.fechaInicio)}</td><td>${fmt(r.fechaFin)}</td>
+      <td>${money(r.montoTotal)}</td><td><span class="tag ${r.estado}">${r.estado}</span></td>
+      <td>${r.estado === 'Pendiente' ? `<button class="verde" onclick="confirmar(${r.id})">Aprobar</button> ` : ''}${btnCancelar(r)}</td></tr>`).join('')
+      || '<tr><td colspan="8">No hay reservas.</td></tr>';
+    $('espaciosAdmin').innerHTML = esp.map(e => `<tr><td>${e.nombre}</td><td>${e.categoria}</td><td>${e.capacidad}</td><td>${money(e.precioPorHora)}</td><td>${e.estado}</td></tr>`).join('');
+  } catch (e) { aviso(e.message, false); }
+}
+
+iniciar();
+</script>
+</body>
+</html>

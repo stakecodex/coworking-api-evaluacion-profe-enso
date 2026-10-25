@@ -89,6 +89,12 @@ builder.Services.AddSwaggerGen(options =>
 
 builder.Services.AddControllers();
 
+// CORS: permite que un frontend local (cualquier puerto de localhost) consuma la API
+builder.Services.AddCors(options => options.AddPolicy("FrontendLocal", policy =>
+    policy.SetIsOriginAllowed(origin => new Uri(origin).IsLoopback)
+          .AllowAnyHeader()
+          .AllowAnyMethod()));
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
@@ -105,6 +111,12 @@ app.UseSwagger();
 app.UseSwaggerUI(options => options.SwaggerEndpoint("/swagger/v1/swagger.json", "API Reservas Coworking v1"));
 
 app.UseHttpsRedirection();
+
+// Frontend de demostración servido por la propia API (wwwroot/index.html)
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
+app.UseCors("FrontendLocal");
 
 // se habilitan los permisos
 app.UseAuthentication();
