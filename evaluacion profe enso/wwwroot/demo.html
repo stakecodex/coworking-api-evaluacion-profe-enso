@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Demo Coworking - Pantalla + API</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; font-family: Segoe UI, Arial, sans-serif; }
+  body { display: flex; }
+  #izq { flex: 1; min-width: 0; border-right: 3px solid #2b3a67; display: flex; flex-direction: column; }
+  #der { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #1e1e2e; color: #ddd; }
+  .titulo { background: #2b3a67; color: #fff; padding: 8px 14px; font-size: 14px; display: flex; gap: 8px; align-items: center; }
+  .titulo button { padding: 4px 10px; border: 1px solid #fff5; background: transparent; color: #fff; border-radius: 4px; cursor: pointer; }
+  .titulo button.activo { background: #fff; color: #2b3a67; }
+  iframe { flex: 1; border: 0; width: 100%; background: #fff; }
+  #monitor { flex: 1; overflow-y: auto; padding: 10px; font-family: Consolas, monospace; font-size: 12px; }
+  .llamada { border-left: 4px solid #888; background: #2a2a3c; margin-bottom: 8px; padding: 6px 10px; border-radius: 3px; }
+  .llamada.ok { border-color: #2e8b57; } .llamada.mal { border-color: #c0392b; }
+  .linea { font-weight: bold; color: #fff; }
+  .hora { color: #999; margin-right: 8px; }
+  pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-all; color: #b9d7ff; max-height: 140px; overflow: auto; }
+  .vacio { color: #888; padding: 10px; }
+  .oculto { display: none !important; }
+</style>
+</head>
+<body>
+  <div id="izq">
+    <div class="titulo">Pantalla del usuario (lo que ve el cliente / administrador)</div>
+    <iframe id="app" src="/"></iframe>
+  </div>
+  <div id="der">
+    <div class="titulo">
+      API:
+      <button id="bMon" class="activo" onclick="ver('mon')">Monitor en vivo</button>
+      <button id="bSwa" onclick="ver('swa')">Swagger</button>
+      <button onclick="limpiar()" style="margin-left:auto">Limpiar</button>
+    </div>
+    <div id="monitor"><div class="vacio">Aquí aparecerá cada llamada a la API que haga la pantalla de la izquierda.</div></div>
+    <iframe id="swagger" class="oculto"></iframe>
+  </div>
+
+<script>
+const app = document.getElementById('app');
+const mon = document.getElementById('monitor');
+
+function ver(que) {
+  document.getElementById('monitor').classList.toggle('oculto', que !== 'mon');
+  const sw = document.getElementById('swagger');
+  sw.classList.toggle('oculto', que !== 'swa');
+  if (que === 'swa' && !sw.src) sw.src = '/swagger';
+  document.getElementById('bMon').classList.toggle('activo', que === 'mon');
+  document.getElementById('bSwa').classList.toggle('activo', que === 'swa');
+}
+
+function limpiar() { mon.innerHTML = ''; }
+
+function recortar(texto) {
+  if (!texto) return '';
+  try { texto = JSON.stringify(JSON.parse(texto), null, 2); } catch {}
+  return texto.length > 1500 ? texto.slice(0, 1500) + '\n…' : texto;
+}
+
+function agregar(metodo, url, estado, enviado, recibido) {
+  const v = mon.querySelector('.vacio'); if (v) v.remove();
+  const d = document.createElement('div');
+  d.className = 'llamada ' + (estado >= 200 && estado < 300 ? 'ok' : 'mal');
+  const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  d.innerHTML = `<div class="linea"><span class="hora">${new Date().toLocaleTimeString('es-CL')}</span>${metodo} ${esc(url)} &rarr; ${estado}</div>`
+    + (enviado ? `<pre>Enviado: ${esc(recortar(enviado))}</pre>` : '')
+    + (recibido ? `<pre>Respuesta: ${esc(recortar(recibido))}</pre>` : '');
+  mon.prepend(d);
+}
+
+// Intercepta las llamadas que hace la pantalla de la izquierda y las muestra a la derecha
+app.addEventListener('load', () => {
+  const w = app.contentWindow;
+  const original = w.fetch.bind(w);
+  w.fetch = async (url, opciones = {}) => {
+    const r = await original(url, opciones);
+    let texto = '';
+    try { texto = await r.clone().text(); } catch {}
+    const enviado = opciones.body && !String(url).includes('/User') ? opciones.body : (opciones.body ? '(datos de acceso ocultos)' : '');
+    agregar((opciones.method || 'GET'), String(url), r.status, enviado, String(url).includes('/User/login') ? '(token recibido)' : texto);
+    return r;
+  };
+});
+</script>
+</body>
+</html>
