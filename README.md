@@ -16,7 +16,7 @@ Trabajo 2 de ConstrucciÃ³n de Software. Es una API para administrar las salas 
 Uso la base de datos que autorizÃ³ el profesor (`reservas_db_joserodriguez`). Cada llamada a la API queda anotada en la tabla de auditorÃ­a.
 
 ## CÃ³mo probarlo
-1. Abrir el proyecto en Visual Studio y ejecutarlo (o hacer doble clic en `Abrir-Coworking.bat`).
+1. Encender la API con doble clic en `Abrir-Coworking.bat` (o ejecutando desde Visual Studio).
 2. Se abre la pÃ¡gina de Swagger, donde se pueden probar todas las funciones.
 3. Iniciar sesiÃ³n con `POST /api/v1/User/login`, copiar el token y pegarlo en el botÃ³n *Authorize*.
 
@@ -24,4 +24,5 @@ Las claves y la conexiÃ³n a la base de datos no estÃ¡n en el repositorio. Ha
 
 ## Pruebas
 Con `dotnet test` se ejecutan las 30 pruebas automÃ¡ticas.
+
 
