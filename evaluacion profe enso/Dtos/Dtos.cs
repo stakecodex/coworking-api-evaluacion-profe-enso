@@ -4,49 +4,62 @@ namespace Coworking.Dtos;
 
 public class LoginDto
 {
-    [Required, EmailAddress]
+    [Display(Name = "correo")]
+    [Required(ErrorMessage = "El campo {0} es obligatorio."), EmailAddress(ErrorMessage = "El {0} no tiene un formato válido.")]
     public string Email { get; set; } = null!;
 
-    [Required]
+    [Display(Name = "contraseña")]
+    [Required(ErrorMessage = "El campo {0} es obligatorio.")]
     public string Password { get; set; } = null!;
 }
 
 public class RegistroDto
 {
-    [Required, StringLength(100, MinimumLength = 2)]
+    [Display(Name = "nombre")]
+    [Required(ErrorMessage = "El campo {0} es obligatorio."), StringLength(100, MinimumLength = 2, ErrorMessage = "El campo {0} debe tener entre {2} y {1} caracteres.")]
     public string Nombre { get; set; } = null!;
 
-    [Required, StringLength(100, MinimumLength = 2)]
+    [Display(Name = "apellido")]
+    [Required(ErrorMessage = "El campo {0} es obligatorio."), StringLength(100, MinimumLength = 2, ErrorMessage = "El campo {0} debe tener entre {2} y {1} caracteres.")]
     public string Apellido { get; set; } = null!;
 
-    [Required, EmailAddress, StringLength(120)]
+    [Display(Name = "correo")]
+    [Required(ErrorMessage = "El campo {0} es obligatorio."), EmailAddress(ErrorMessage = "El {0} no tiene un formato válido."), StringLength(120, ErrorMessage = "El campo {0} no puede superar {1} caracteres.")]
     public string Email { get; set; } = null!;
 
-    [Required, StringLength(72, MinimumLength = 8)]
+    [Display(Name = "contraseña")]
+    [Required(ErrorMessage = "El campo {0} es obligatorio."), StringLength(72, MinimumLength = 8, ErrorMessage = "La {0} debe tener entre {2} y {1} caracteres.")]
     public string Password { get; set; } = null!;
 
-    [StringLength(20)]
+    [Display(Name = "teléfono")]
+    [StringLength(20, ErrorMessage = "El campo {0} no puede superar {1} caracteres.")]
     public string? Telefono { get; set; }
 }
 
 public class EspacioRequest
 {
-    [Range(1, int.MaxValue)]
+    [Display(Name = "categoría")]
+    [Range(1, int.MaxValue, ErrorMessage = "Debe indicar una {0} válida.")]
     public int CategoriaId { get; set; }
 
-    [Required, StringLength(100, MinimumLength = 2)]
+    [Display(Name = "nombre")]
+    [Required(ErrorMessage = "El campo {0} es obligatorio."), StringLength(100, MinimumLength = 2, ErrorMessage = "El campo {0} debe tener entre {2} y {1} caracteres.")]
     public string Nombre { get; set; } = null!;
 
-    [StringLength(500)]
+    [Display(Name = "descripción")]
+    [StringLength(500, ErrorMessage = "El campo {0} no puede superar {1} caracteres.")]
     public string? Descripcion { get; set; }
 
-    [Range(1, 200)]
+    [Display(Name = "capacidad")]
+    [Range(1, 200, ErrorMessage = "La {0} debe estar entre {1} y {2}.")]
     public int Capacidad { get; set; }
 
-    [Range(0.01, 1000000)]
+    [Display(Name = "precio por hora")]
+    [Range(0.01, 1000000, ErrorMessage = "El {0} debe estar entre {1} y {2}.")]
     public decimal PrecioPorHora { get; set; }
 
-    [StringLength(20)]
+    [Display(Name = "piso")]
+    [StringLength(20, ErrorMessage = "El campo {0} no puede superar {1} caracteres.")]
     public string? PisoUbicacion { get; set; }
 
     [RegularExpression("^(Disponible|Mantenimiento)$", ErrorMessage = "El estado debe ser 'Disponible' o 'Mantenimiento'.")]
@@ -72,22 +85,26 @@ public class EspacioResponse
 
 public class ReservaRequest : IValidatableObject
 {
-    [Range(1, int.MaxValue)]
+    [Display(Name = "espacio")]
+    [Range(1, int.MaxValue, ErrorMessage = "Debe indicar un {0} válido.")]
     public int EspacioId { get; set; }
 
-    [Required]
+    [Display(Name = "fecha de inicio")]
+    [Required(ErrorMessage = "La {0} es obligatoria.")]
     public DateTime? FechaInicio { get; set; }
 
-    [Required]
+    [Display(Name = "fecha de fin")]
+    [Required(ErrorMessage = "La {0} es obligatoria.")]
     public DateTime? FechaFin { get; set; }
 
-    [StringLength(500)]
+    [Display(Name = "notas")]
+    [StringLength(500, ErrorMessage = "El campo {0} no puede superar {1} caracteres.")]
     public string? NotasAdicionales { get; set; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
         if (FechaInicio.HasValue && FechaFin.HasValue && FechaFin <= FechaInicio)
-            yield return new ValidationResult("FechaFin debe ser posterior a FechaInicio.", new[] { nameof(FechaFin) });
+            yield return new ValidationResult("La fecha de fin debe ser posterior a la fecha de inicio.", new[] { nameof(FechaFin) });
     }
 }
 

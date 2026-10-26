@@ -34,7 +34,7 @@ namespace Coworking.Controllers.V1
         {
             var email = dto.Email.Trim().ToLowerInvariant();
             if (await _usuarios.ExisteEmailAsync(email))
-                return Conflict(new ProblemDetails { Status = 409, Title = "Conflict", Detail = "El email ya está registrado" });
+                return Conflict(new ProblemDetails { Status = 409, Title = "Conflicto", Detail = "El email ya está registrado" });
 
             var rol = await _usuarios.GetRolPorNombreAsync(Roles.Cliente);
             if (rol == null)

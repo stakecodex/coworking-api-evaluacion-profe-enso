@@ -1,6 +1,5 @@
 using Coworking.Services;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.WebUtilities;
 
 namespace Coworking.Middleware;
 
@@ -40,7 +39,7 @@ public class ExceptionHandlingMiddleware
         var problem = new ProblemDetails
         {
             Status = status,
-            Title = ReasonPhrases.GetReasonPhrase(status),
+            Title = Textos.Titulo(status),
             Detail = detalle,
             Instance = context.Request.Path
         };

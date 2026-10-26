@@ -4,6 +4,7 @@ using Coworking.Models;
 using Coworking.Repositories;
 using Coworking.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
@@ -87,7 +88,47 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddMvcOptions(o =>
+    {
+        // Mensajes de enlace de datos en español
+        var m = o.ModelBindingMessageProvider;
+        m.SetValueIsInvalidAccessor(v => $"El valor '{v}' no es válido.");
+        m.SetAttemptedValueIsInvalidAccessor((v, campo) => $"El valor '{v}' no es válido para {campo}.");
+        m.SetNonPropertyAttemptedValueIsInvalidAccessor(v => $"El valor '{v}' no es válido.");
+        m.SetValueMustBeANumberAccessor(campo => $"El campo {campo} debe ser un número.");
+        m.SetNonPropertyValueMustBeANumberAccessor(() => "El valor debe ser un número.");
+        m.SetValueMustNotBeNullAccessor(v => $"El valor '{v}' es obligatorio.");
+        m.SetMissingBindRequiredValueAccessor(campo => $"Falta el valor obligatorio '{campo}'.");
+        m.SetMissingKeyOrValueAccessor(() => "Se requiere un valor.");
+        m.SetMissingRequestBodyRequiredValueAccessor(() => "Se requiere un cuerpo en la solicitud.");
+        m.SetUnknownValueIsInvalidAccessor(campo => $"El valor no es válido para {campo}.");
+        m.SetNonPropertyUnknownValueIsInvalidAccessor(() => "El valor no es válido.");
+    })
+    .ConfigureApiBehaviorOptions(o =>
+    {
+        foreach (var (codigo, mapeo) in o.ClientErrorMapping)
+            mapeo.Title = Textos.Titulo(codigo);
+
+        o.InvalidModelStateResponseFactory = ctx =>
+        {
+            var errores = ctx.ModelState
+                .Where(e => e.Value!.Errors.Count > 0)
+                .ToDictionary(
+                    e => e.Key,
+                    e => e.Value!.Errors.Select(x =>
+                        x.Exception != null || ctx.ModelState.Keys.Any(k => k == e.Key && k.StartsWith("$")) ? "El formato del dato enviado no es válido."
+                        : x.ErrorMessage.StartsWith("The ") && x.ErrorMessage.EndsWith(" field is required.") ? "Se requiere un cuerpo válido en la solicitud."
+                        : x.ErrorMessage).ToArray());
+            var problema = new ValidationProblemDetails(errores)
+            {
+                Title = "Uno o más errores de validación.",
+                Status = StatusCodes.Status400BadRequest,
+                Instance = ctx.HttpContext.Request.Path
+            };
+            return new BadRequestObjectResult(problema) { ContentTypes = { "application/problem+json" } };
+        };
+    });
 
 // CORS: permite que un frontend local (cualquier puerto de localhost) consuma la API
 builder.Services.AddCors(options => options.AddPolicy("FrontendLocal", policy =>
@@ -108,7 +149,12 @@ app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 app.UseSwagger();
-app.UseSwaggerUI(options => options.SwaggerEndpoint("/swagger/v1/swagger.json", "API Reservas Coworking v1"));
+app.UseSwaggerUI(options =>
+{
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "API Reservas Coworking v1");
+    options.DocumentTitle = "API Reservas Coworking";
+    options.InjectJavascript("/swagger-es.js");
+});
 
 app.UseHttpsRedirection();
 

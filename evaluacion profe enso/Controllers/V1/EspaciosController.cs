@@ -41,10 +41,10 @@ namespace Coworking.Controllers.V1
         private async Task<ActionResult?> ValidarReferenciasAsync(EspacioRequest request, int? excluirId)
         {
             if (!await _espacios.ExisteCategoriaAsync(request.CategoriaId))
-                return BadRequest(new ProblemDetails { Status = 400, Title = "Bad Request", Detail = "La categoría no existe." });
+                return BadRequest(new ProblemDetails { Status = 400, Title = "Solicitud incorrecta", Detail = "La categoría no existe." });
 
             if (await _espacios.ExisteNombreAsync(request.Nombre.Trim(), excluirId))
-                return Conflict(new ProblemDetails { Status = 409, Title = "Conflict", Detail = "Ya existe un espacio con ese nombre." });
+                return Conflict(new ProblemDetails { Status = 409, Title = "Conflicto", Detail = "Ya existe un espacio con ese nombre." });
 
             return null;
         }
@@ -157,7 +157,7 @@ namespace Coworking.Controllers.V1
                 return Conflict(new ProblemDetails
                 {
                     Status = 409,
-                    Title = "Conflict",
+                    Title = "Conflicto",
                     Detail = "El espacio tiene reservas asociadas; póngalo en Mantenimiento en lugar de eliminarlo."
                 });
 
