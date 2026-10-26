@@ -29,7 +29,7 @@
 <body>
 <header>
   <h1>Coworking - Reservas</h1>
-  <div id="sesion" class="oculto"><span id="quien"></span> <button class="gris" onclick="salir()">Cerrar sesión</button></div>
+  <div id="sesion" class="oculto"><span id="quien"></span> <button class="gris" onclick="verPerfil()">Mi perfil</button> <button class="gris" onclick="salir()">Cerrar sesión</button></div>
 </header>
 <main>
 
@@ -40,6 +40,17 @@
       <label>Contraseña <input id="password" type="password"></label>
       <button onclick="login()">Entrar</button>
       <button class="gris" onclick="mostrarRegistro()">Crear cuenta de cliente</button>
+    </div>
+    <div style="margin-top:16px">
+      <h2 style="font-size:15px">Cuentas de demostración</h2>
+      <table>
+        <thead><tr><th>Rol</th><th>Nombre</th><th>Correo</th><th>Contraseña</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>Administrador</td><td>Administrador</td><td>admin@coworking.cl</td><td>Admin12345!</td><td><button class="gris" onclick="usarCuenta('admin@coworking.cl','Admin12345!')">Usar</button></td></tr>
+          <tr><td>Cliente</td><td>Camila Soto</td><td>cliente1@coworking.cl</td><td>Cliente12345!</td><td><button class="gris" onclick="usarCuenta('cliente1@coworking.cl','Cliente12345!')">Usar</button></td></tr>
+          <tr><td>Cliente</td><td>Matías Rojas</td><td>cliente2@coworking.cl</td><td>Cliente12345!</td><td><button class="gris" onclick="usarCuenta('cliente2@coworking.cl','Cliente12345!')">Usar</button></td></tr>
+        </tbody>
+      </table>
     </div>
     <div id="formRegistro" class="oculto">
       <h2 style="margin-top:14px">Registro de cliente</h2>
@@ -58,6 +69,7 @@
     <div class="card">
       <h2>Buscar espacios disponibles</h2>
       <div class="fila">
+        <label>Tipo de espacio <select id="fTipo" onchange="buscar()"><option value="">Todos</option></select></label>
         <label>Fecha <input id="fecha" type="date"></label>
         <label>Desde <input id="hIni" type="time" value="10:00"></label>
         <label>Hasta <input id="hFin" type="time" value="12:00"></label>
@@ -88,16 +100,18 @@
     <div class="card">
       <h2>Espacios</h2>
       <div class="fila">
-        <button class="verde" onclick="$('formEspacio').classList.toggle('oculto')">+ Crear espacio</button>
+        <button class="verde" onclick="nuevoEspacio()">+ Crear espacio</button>
       </div>
       <div id="formEspacio" class="oculto" style="margin-bottom:14px">
+        <input type="hidden" id="eId">
         <div class="fila">
           <label>Nombre <input id="eNombre"></label>
           <label>Tipo <select id="eCategoria"></select></label>
           <label>Capacidad <input id="eCapacidad" type="number" min="1" value="4" style="width:80px"></label>
           <label>Precio/hora <input id="ePrecio" type="number" min="1" value="5000" style="width:100px"></label>
           <label>Piso <input id="ePiso" style="width:70px"></label>
-          <button onclick="crearEspacio()">Guardar espacio</button>
+          <label>Estado <select id="eEstado"><option>Disponible</option><option>Mantenimiento</option></select></label>
+          <button id="bGuardarEspacio" onclick="guardarEspacio()">Guardar espacio</button>
         </div>
       </div>
       <table>
@@ -105,6 +119,12 @@
         <tbody id="espaciosAdmin"></tbody>
       </table>
     </div>
+  </section>
+
+  <section id="vistaCategorias" class="card oculto">
+    <h2>Categorías de espacio</h2>
+    <div class="fila"><button onclick="verCategorias()">Ver categorías</button></div>
+    <ul id="listaCategorias"></ul>
   </section>
 </main>
 <div id="mensaje"></div>
@@ -155,6 +175,8 @@ function leerToken(t) {
 
 function mostrarRegistro() { $('formRegistro').classList.toggle('oculto'); }
 
+function usarCuenta(correo, clave) { $('email').value = correo; $('password').value = clave; }
+
 async function registrar() {
   try {
     await api('/User', 'POST', {
@@ -178,7 +200,7 @@ async function login() {
 
 function salir() {
   token = null; localStorage.removeItem('token');
-  ['vistaCliente', 'vistaAdmin', 'sesion'].forEach(i => $(i).classList.add('oculto'));
+  ['vistaCliente', 'vistaAdmin', 'sesion', 'vistaCategorias'].forEach(i => $(i).classList.add('oculto'));
   $('vistaLogin').classList.remove('oculto');
 }
 
@@ -190,6 +212,7 @@ async function iniciar() {
   } catch { return salir(); }
   $('quien').textContent = nombre + ' (' + rol + ')  ';
   $('sesion').classList.remove('oculto');
+  $('vistaCategorias').classList.remove('oculto');
   $('vistaLogin').classList.add('oculto');
   if (rol === 'Administrador') {
     $('vistaAdmin').classList.remove('oculto'); $('vistaCliente').classList.add('oculto');
@@ -210,21 +233,30 @@ function rango() {
 async function buscar() {
   try {
     const { desde, hasta } = rango();
-    const lista = await api('/Espacios');
+    const lista = (await api('/Espacios')).filter(e => !$('fTipo').value || e.categoria === $('fTipo').value);
+    if (!$('fTipo').dataset.listo) {
+      const cats = await api('/Espacios/categorias');
+      $('fTipo').insertAdjacentHTML('beforeend', cats.map(c => `<option value="${c.nombre}">${c.nombre}</option>`).join(''));
+      $('fTipo').dataset.listo = '1';
+    }
     const filas = await Promise.all(lista.map(async e => {
       const d = await api(`/Espacios/${e.id}/disponibilidad?desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}`);
       const est = d.disponible ? 'Libre' : 'Ocupado';
       return `<tr><td>${e.nombre}</td><td>${e.categoria}</td><td>${e.capacidad}</td><td>${money(e.precioPorHora)}</td>
         <td><span class="tag ${est}">${est}</span></td>
-        <td>${d.disponible ? `<button class="verde" onclick="reservar(${e.id})">Reservar</button>` : ''}</td></tr>`;
+        <td>${d.disponible ? `<button class="verde"         onclick="reservar(${e.id}, '${e.nombre.replace(/'/g, "\\'")}', ${e.precioPorHora})">Reservar</button>` : ''}</td></tr>`;
     }));
-    $('espacios').innerHTML = filas.join('') || '<tr><td colspan="6">No hay espacios.</td></tr>';
+            $('espacios').innerHTML = filas.join('') || '<tr><td colspan="6">No hay espacios de ese tipo.</td></tr>';
   } catch (e) { aviso(e.message, false); }
 }
 
-async function reservar(id) {
+        async function reservar(id, nombreEspacio, precio) {
   try {
     const { desde, hasta } = rango();
+            const horas = (new Date(hasta) - new Date(desde)) / 3600000;
+            if (horas <= 0) throw new Error('La hora de término debe ser posterior a la de inicio.');
+            const total = horas * precio;
+            if (!confirm(`Reservar "${nombreEspacio}"\n\nHoras: ${horas}\nPrecio por hora: ${money(precio)}\nCosto total: ${money(total)}\n\n¿Confirmar la reserva?`)) return;
     const r = await api('/Reservas', 'POST', { espacioId: id, fechaInicio: desde, fechaFin: hasta });
     aviso(`Reserva creada (${money(r.montoTotal)}). Queda pendiente de aprobación.`);
     await buscar(); await cargarMias();
@@ -245,6 +277,7 @@ async function cargarMias() {
 }
 
 async function cancelar(id) {
+  if (!confirm('¿Cancelar esta reserva?')) return;
   try {
     await api('/Reservas/' + id, 'DELETE');
     aviso('Reserva cancelada.');
@@ -268,25 +301,80 @@ async function cargarAdmin() {
       const mant = e.estado === 'Mantenimiento';
       return `<tr><td>${e.nombre}</td><td>${e.categoria}</td><td>${e.capacidad}</td><td>${money(e.precioPorHora)}</td><td>${e.estado}</td>
       <td><button class="verde" onclick="reservarAdmin(${e.id})">Reservar</button>
+      <button class="gris" onclick="editarEspacio(${e.id})">Editar</button>
       <button class="gris" onclick="cambiarEstado(${e.id}, '${mant ? 'Disponible' : 'Mantenimiento'}')">${mant ? 'Habilitar' : 'Mantenimiento'}</button>
       <button class="rojo" onclick="eliminarEspacio(${e.id})">Eliminar</button></td></tr>`;
     }).join('');
-    if (!$('eCategoria').options.length) {
-      const cats = await api('/Espacios/categorias');
-      $('eCategoria').innerHTML = cats.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
-    }
+    await cargarTiposAdmin();
   } catch (e) { aviso(e.message, false); }
 }
 
-async function crearEspacio() {
+// Las llamadas automáticas no mueven Swagger; las que inicia el usuario con un botón sí (bandera __manual)
+async function manual(fn) {
+  window.__manual = true;
+  try { return await fn(); } finally { window.__manual = false; }
+}
+
+async function cargarTiposAdmin() {
+  if ($('eCategoria').options.length) return;
+  const cats = await api('/Espacios/categorias');
+  $('eCategoria').innerHTML = cats.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+}
+
+async function verCategorias() {
   try {
-    const e = await api('/Espacios', 'POST', {
+    const cats = await manual(() => api('/Espacios/categorias'));
+    $('listaCategorias').innerHTML = cats.map(c => `<li><b>${c.nombre}</b>${c.descripcion ? ' - ' + c.descripcion : ''}</li>`).join('')
+      || '<li>No hay categorías.</li>';
+  } catch (e) { aviso(e.message, false); }
+}
+
+async function verPerfil() {
+  try {
+    const p = await manual(() => api('/User/me'));
+    aviso(`Perfil: ${p.nombre || ''} ${p.apellido || ''} - ${p.email} (${p.rol || rol})`);
+  } catch (e) { aviso(e.message, false); }
+}
+
+async function nuevoEspacio() {
+  await cargarTiposAdmin().catch(() => {});
+  $('eId').value = ''; $('eNombre').value = ''; $('eEstado').value = 'Disponible';
+  $('bGuardarEspacio').textContent = 'Guardar espacio';
+  $('formEspacio').classList.toggle('oculto');
+}
+
+async function editarEspacio(id) {
+  try {
+    const e = await api('/Espacios/' + id);
+    await cargarTiposAdmin();
+    $('eId').value = id; $('eNombre').value = e.nombre; $('eCategoria').value = e.categoriaId;
+    $('eCapacidad').value = e.capacidad; $('ePrecio').value = e.precioPorHora;
+    $('ePiso').value = e.pisoUbicacion || ''; $('eEstado').value = e.estado;
+    $('bGuardarEspacio').textContent = 'Guardar cambios';
+    $('formEspacio').classList.remove('oculto');
+    $('formEspacio').scrollIntoView({ behavior: 'smooth' });
+  } catch (err) { aviso(err.message, false); }
+}
+
+// Crea (POST) o actualiza (PUT) según haya un id cargado en el formulario
+async function guardarEspacio() {
+  try {
+    const id = $('eId').value;
+    const cuerpo = {
       categoriaId: Number($('eCategoria').value), nombre: $('eNombre').value,
       capacidad: Number($('eCapacidad').value), precioPorHora: Number($('ePrecio').value),
-      pisoUbicacion: $('ePiso').value || null, estado: 'Disponible', servicioIds: []
-    });
-    aviso(`Espacio "${e.nombre}" creado.`);
-    $('eNombre').value = ''; $('formEspacio').classList.add('oculto');
+      pisoUbicacion: $('ePiso').value || null, estado: $('eEstado').value, servicioIds: []
+    };
+    if (id) {
+      const actual = await api('/Espacios/' + id);
+      cuerpo.descripcion = actual.descripcion; cuerpo.servicioIds = actual.servicioIds || [];
+      await api('/Espacios/' + id, 'PUT', cuerpo);
+      aviso(`Espacio "${cuerpo.nombre}" actualizado.`);
+    } else {
+      const e = await api('/Espacios', 'POST', cuerpo);
+      aviso(`Espacio "${e.nombre}" creado.`);
+    }
+    $('eId').value = ''; $('eNombre').value = ''; $('formEspacio').classList.add('oculto');
     cargarAdmin();
   } catch (e) { aviso(e.message, false); }
 }

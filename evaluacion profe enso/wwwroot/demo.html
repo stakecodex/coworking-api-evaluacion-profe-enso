@@ -91,31 +91,45 @@ function nota(texto) {
   clearTimeout(nota.t); nota.t = setTimeout(() => aviso.textContent = '', 5000);
 }
 
-// Busca el endpoint dentro de Swagger, lo despliega y hace scroll hasta él
-function enfocarSwagger(metodo, url) {
-  const ruta = new URL(url, location.origin).pathname;
-  const intentar = intentos => {
-    const doc = sw.contentDocument;
-    const bloques = doc ? [...doc.querySelectorAll('.opblock')] : [];
-    const bloque = bloques.find(b => {
-      const m = b.querySelector('.opblock-summary-method')?.textContent.trim().toUpperCase();
-      const p = b.querySelector('.opblock-summary-path')?.getAttribute('data-path');
-      if (m !== metodo || !p) return false;
-      const patron = p.split(/\{[^}]+\}/).map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^/]+');
-      return new RegExp('^' + patron + '$', 'i').test(ruta);
-    });
-    if (!bloque) { if (intentos > 0) setTimeout(() => intentar(intentos - 1), 300); return; }
+const SWAGGER_BASE = '/swagger/index.html';
 
-    const abrirCerrar = b => (b.querySelector('.opblock-summary-control') || b.querySelector('.opblock-summary'))?.click();
-    bloques.filter(b => b !== bloque && b.classList.contains('is-open')).forEach(abrirCerrar);
-    if (!bloque.classList.contains('is-open')) abrirCerrar(bloque);
+// Convierte una llamada real (POST /api/v1/Reservas/5) en el ancla de Swagger: #/Reservas/post_api_v1_Reservas__id_
+function anclaSwagger(metodo, url) {
+  const ruta = new URL(url, location.origin).pathname.replace(/\/\d+(?=\/|$)/g, '/{id}');
+  const controlador = ruta.split('/')[3];
+  return `#/${controlador}/${metodo.toLowerCase()}${ruta.replace(/[^A-Za-z0-9]/g, '_')}`;
+}
+
+// Apunta el iframe de Swagger al endpoint exacto.
+// Se pasa por about:blank y se espera un instante para que Swagger lo trate como una navegación nueva.
+// Si el deep linking no despliega el endpoint, se abre a mano por su id (operations-Controlador-metodo_ruta).
+function irA(metodo, url) {
+  ver('swa');
+  const ancla = anclaSwagger(metodo, url);
+  const idBloque = 'operations-' + ancla.slice(2).replace('/', '-');
+  const token = ++irA.n;
+  sw.src = 'about:blank';
+  setTimeout(() => {
+    if (token !== irA.n) return;
+    sw.src = SWAGGER_BASE + '?v=' + Date.now() + ancla;
+    sw.addEventListener('load', () => asegurarAbierto(idBloque, token), { once: true });
+  }, 150);
+}
+irA.n = 0;
+
+function asegurarAbierto(idBloque, token, intentos = 25) {
+  if (token !== irA.n) return;
+  const doc = sw.contentDocument;
+  const bloque = doc && doc.getElementById(idBloque);
+  if (!bloque) { if (intentos > 0) setTimeout(() => asegurarAbierto(idBloque, token, intentos - 1), 250); return; }
+  setTimeout(() => {
+    if (!bloque.classList.contains('is-open')) (bloque.querySelector('.opblock-summary-control') || bloque.querySelector('.opblock-summary'))?.click();
     bloque.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    bloque.style.transition = 'outline-color .3s';
     bloque.style.outline = '3px solid #ff7a3d';
     setTimeout(() => bloque.style.outline = '', 2500);
-  };
-  setTimeout(() => intentar(10), 100);
+  }, 400);
 }
+
 
 // Rol que viene en el token recibido en el login
 function rolDelToken(token) {
@@ -126,26 +140,50 @@ function rolDelToken(token) {
   } catch { return null; }
 }
 
+let silencioGet = 0;
+
+// Se ejecuta ANTES de enviar la llamada: Swagger ya muestra el endpoint que se está por consumir
+function alEnviar(metodo, url) {
+  const ruta = new URL(url, location.origin).pathname.replace(/\/$/, '');
+  const esListaEspacios = metodo === 'GET' && /\/api\/v1\/Espacios$/i.test(ruta);
+  const manualIzq = !!app.contentWindow.__manual;
+  const esCategorias = metodo === 'GET' && /\/api\/v1\/Espacios\/categorias$/i.test(ruta);
+  const esPerfil = metodo === 'GET' && /\/api\/v1\/User\/me$/i.test(ruta);
+  if ((esCategorias || esPerfil) && manualIzq) { irA(metodo, url); return; }
+  if (metodo !== 'GET') silencioGet = Date.now() + 3000; // evita que el refresco automático de la lista pise el endpoint
+  if (metodo !== 'GET' || (esListaEspacios && Date.now() > silencioGet)) irA(metodo, url);
+}
+
 function alRegistrar(metodo, url, estado, enviado, recibido) {
   const esLogin = metodo === 'POST' && /\/User\/login/i.test(url);
   const ok = estado >= 200 && estado < 300;
 
-  // 4. Login: limpia el monitor y apunta Swagger a la sección del rol
+  // Login correcto: limpia el monitor; tras mostrar el POST de login, Swagger pasa a la sección del rol
   if (esLogin && ok) {
     limpiar();
     agregar(metodo, url, estado, enviado, recibido);
     let rol = null;
     try { rol = rolDelToken(JSON.parse(recibido).token); } catch {}
-    ver('swa');
-    if (rol === 'Administrador') { enfocarSwagger('PUT', '/api/v1/Reservas/1/confirmar'); nota('Rol: Administrador → aprobar reservas'); }
-    else { enfocarSwagger('POST', '/api/v1/Reservas'); nota('Rol: Cliente → crear reservas'); }
+    silencioGet = Date.now() + 2800;
+    setTimeout(() => {
+      if (rol === 'Administrador') { irA('PUT', '/api/v1/Reservas/1/confirmar'); nota('Rol: Administrador → aprobar reservas'); }
+      else { irA('POST', '/api/v1/Reservas'); nota('Rol: Cliente → crear reservas'); }
+    }, 2500);
     return;
   }
 
   agregar(metodo, url, estado, enviado, recibido);
 
-  if (!ok) { ver('mon'); nota('Bloqueado por el backend: ' + estado); return; }          // 1. error → Monitor
-  if (metodo !== 'GET') { ver('swa'); enfocarSwagger(metodo, url); nota('Endpoint consumido: ' + metodo); } // 1 y 2. éxito → Swagger
+  if (!ok) { ver('mon'); nota('Bloqueado por el backend: ' + estado); return; }
+  if (metodo !== 'GET') nota('Endpoint consumido: ' + metodo + ' ' + new URL(url, location.origin).pathname);
+}
+
+// Cerrar sesión: limpia el monitor y reinicia Swagger a su ruta base
+function alSalir() {
+  silencioGet = 0;
+  limpiar();
+  ver('mon');
+  sw.src = SWAGGER_BASE;
 }
 
 // Intercepta las llamadas de la pantalla de la izquierda
@@ -155,14 +193,19 @@ function interceptar() {
   w.__interceptado = true;
   const original = w.fetch.bind(w);
   w.fetch = async (url, opciones = {}) => {
+    const metodo = (opciones.method || 'GET').toUpperCase();
+    alEnviar(metodo, String(url));
     const r = await original(url, opciones);
     let texto = '';
     try { texto = await r.clone().text(); } catch {}
-    alRegistrar((opciones.method || 'GET').toUpperCase(), String(url), r.status, opciones.body || '', texto);
+    alRegistrar(metodo, String(url), r.status, opciones.body || '', texto);
     return r;
   };
+  const salirOriginal = w.salir;
+  w.salir = function () { alSalir(); return salirOriginal.apply(this, arguments); };
 }
 app.addEventListener('load', interceptar);
+
 </script>
 </body>
 </html>

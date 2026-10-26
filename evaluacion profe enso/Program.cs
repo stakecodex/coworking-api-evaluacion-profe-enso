@@ -153,6 +153,7 @@ app.UseSwaggerUI(options =>
 {
     options.SwaggerEndpoint("/swagger/v1/swagger.json", "API Reservas Coworking v1");
     options.DocumentTitle = "API Reservas Coworking";
+    options.EnableDeepLinking();
     options.InjectJavascript("/swagger-es.js");
 });
 
