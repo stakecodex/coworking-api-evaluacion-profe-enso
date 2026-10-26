@@ -12,13 +12,20 @@
   .titulo { background: #2b3a67; color: #fff; padding: 8px 14px; font-size: 14px; display: flex; gap: 8px; align-items: center; }
   .titulo button { padding: 4px 10px; border: 1px solid #fff5; background: transparent; color: #fff; border-radius: 4px; cursor: pointer; }
   .titulo button.activo { background: #fff; color: #2b3a67; }
+  #aviso { margin-left: 10px; font-size: 12px; opacity: .9; }
   iframe { flex: 1; border: 0; width: 100%; background: #fff; }
   #monitor { flex: 1; overflow-y: auto; padding: 10px; font-family: Consolas, monospace; font-size: 12px; }
   .llamada { border-left: 4px solid #888; background: #2a2a3c; margin-bottom: 8px; padding: 6px 10px; border-radius: 3px; }
-  .llamada.ok { border-color: #2e8b57; } .llamada.mal { border-color: #c0392b; }
+  .llamada.ok { border-color: #2e8b57; }
+  .llamada.mal { border-color: #c0392b; animation: parpadeo 0.6s ease-in-out 5; }
+  @keyframes parpadeo {
+    0%, 100% { background: #2a2a3c; box-shadow: none; }
+    50% { background: #7a2a1d; box-shadow: 0 0 12px 2px #ff7a3d; }
+  }
   .linea { font-weight: bold; color: #fff; }
   .hora { color: #999; margin-right: 8px; }
-  pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-all; color: #b9d7ff; max-height: 140px; overflow: auto; }
+  .etq { color: #f5c97a; margin-top: 4px; }
+  pre { margin: 2px 0 0; white-space: pre-wrap; word-break: break-all; color: #b9d7ff; max-height: 160px; overflow: auto; }
   .vacio { color: #888; padding: 10px; }
   .oculto { display: none !important; }
 </style>
@@ -33,57 +40,129 @@
       API:
       <button id="bMon" class="activo" onclick="ver('mon')">Monitor en vivo</button>
       <button id="bSwa" onclick="ver('swa')">Swagger</button>
+      <span id="aviso"></span>
       <button onclick="limpiar()" style="margin-left:auto">Limpiar</button>
     </div>
     <div id="monitor"><div class="vacio">Aquí aparecerá cada llamada a la API que haga la pantalla de la izquierda.</div></div>
-    <iframe id="swagger" class="oculto"></iframe>
+    <iframe id="swagger" class="oculto" src="/swagger"></iframe>
   </div>
 
 <script>
 const app = document.getElementById('app');
 const mon = document.getElementById('monitor');
+const sw = document.getElementById('swagger');
+const aviso = document.getElementById('aviso');
 
 function ver(que) {
-  document.getElementById('monitor').classList.toggle('oculto', que !== 'mon');
-  const sw = document.getElementById('swagger');
+  mon.classList.toggle('oculto', que !== 'mon');
   sw.classList.toggle('oculto', que !== 'swa');
-  if (que === 'swa' && !sw.src) sw.src = '/swagger';
   document.getElementById('bMon').classList.toggle('activo', que === 'mon');
   document.getElementById('bSwa').classList.toggle('activo', que === 'swa');
 }
 
-function limpiar() { mon.innerHTML = ''; }
+function limpiar() {
+  mon.innerHTML = '<div class="vacio">Aquí aparecerá cada llamada a la API que haga la pantalla de la izquierda.</div>';
+}
 
-function recortar(texto) {
+const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+// JSON formateado; oculta contraseñas y tokens
+function formatear(texto) {
   if (!texto) return '';
-  try { texto = JSON.stringify(JSON.parse(texto), null, 2); } catch {}
-  return texto.length > 1500 ? texto.slice(0, 1500) + '\n…' : texto;
+  try {
+    const ocultar = (k, v) => /password|token/i.test(k) ? '••••••' : v;
+    return JSON.stringify(JSON.parse(texto), ocultar, 2).slice(0, 2500);
+  } catch { return String(texto).slice(0, 2500); }
 }
 
 function agregar(metodo, url, estado, enviado, recibido) {
   const v = mon.querySelector('.vacio'); if (v) v.remove();
+  const ok = estado >= 200 && estado < 300;
   const d = document.createElement('div');
-  d.className = 'llamada ' + (estado >= 200 && estado < 300 ? 'ok' : 'mal');
-  const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  d.className = 'llamada ' + (ok ? 'ok' : 'mal');
   d.innerHTML = `<div class="linea"><span class="hora">${new Date().toLocaleTimeString('es-CL')}</span>${metodo} ${esc(url)} &rarr; ${estado}</div>`
-    + (enviado ? `<pre>Enviado: ${esc(recortar(enviado))}</pre>` : '')
-    + (recibido ? `<pre>Respuesta: ${esc(recortar(recibido))}</pre>` : '');
+    + (enviado ? `<div class="etq">Request (payload enviado):</div><pre>${esc(formatear(enviado))}</pre>` : '')
+    + (recibido ? `<div class="etq">Response:</div><pre>${esc(formatear(recibido))}</pre>` : '');
   mon.prepend(d);
 }
 
-// Intercepta las llamadas que hace la pantalla de la izquierda y las muestra a la derecha
-app.addEventListener('load', () => {
+function nota(texto) {
+  aviso.textContent = texto;
+  clearTimeout(nota.t); nota.t = setTimeout(() => aviso.textContent = '', 5000);
+}
+
+// Busca el endpoint dentro de Swagger, lo despliega y hace scroll hasta él
+function enfocarSwagger(metodo, url) {
+  const ruta = new URL(url, location.origin).pathname;
+  const intentar = intentos => {
+    const doc = sw.contentDocument;
+    const bloques = doc ? [...doc.querySelectorAll('.opblock')] : [];
+    const bloque = bloques.find(b => {
+      const m = b.querySelector('.opblock-summary-method')?.textContent.trim().toUpperCase();
+      const p = b.querySelector('.opblock-summary-path')?.getAttribute('data-path');
+      if (m !== metodo || !p) return false;
+      const patron = p.split(/\{[^}]+\}/).map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^/]+');
+      return new RegExp('^' + patron + '$', 'i').test(ruta);
+    });
+    if (!bloque) { if (intentos > 0) setTimeout(() => intentar(intentos - 1), 300); return; }
+
+    const abrirCerrar = b => (b.querySelector('.opblock-summary-control') || b.querySelector('.opblock-summary'))?.click();
+    bloques.filter(b => b !== bloque && b.classList.contains('is-open')).forEach(abrirCerrar);
+    if (!bloque.classList.contains('is-open')) abrirCerrar(bloque);
+    bloque.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    bloque.style.transition = 'outline-color .3s';
+    bloque.style.outline = '3px solid #ff7a3d';
+    setTimeout(() => bloque.style.outline = '', 2500);
+  };
+  setTimeout(() => intentar(10), 100);
+}
+
+// Rol que viene en el token recibido en el login
+function rolDelToken(token) {
+  try {
+    const p = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    const r = p.role || p['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'];
+    return Array.isArray(r) ? r[0] : r;
+  } catch { return null; }
+}
+
+function alRegistrar(metodo, url, estado, enviado, recibido) {
+  const esLogin = metodo === 'POST' && /\/User\/login/i.test(url);
+  const ok = estado >= 200 && estado < 300;
+
+  // 4. Login: limpia el monitor y apunta Swagger a la sección del rol
+  if (esLogin && ok) {
+    limpiar();
+    agregar(metodo, url, estado, enviado, recibido);
+    let rol = null;
+    try { rol = rolDelToken(JSON.parse(recibido).token); } catch {}
+    ver('swa');
+    if (rol === 'Administrador') { enfocarSwagger('PUT', '/api/v1/Reservas/1/confirmar'); nota('Rol: Administrador → aprobar reservas'); }
+    else { enfocarSwagger('POST', '/api/v1/Reservas'); nota('Rol: Cliente → crear reservas'); }
+    return;
+  }
+
+  agregar(metodo, url, estado, enviado, recibido);
+
+  if (!ok) { ver('mon'); nota('Bloqueado por el backend: ' + estado); return; }          // 1. error → Monitor
+  if (metodo !== 'GET') { ver('swa'); enfocarSwagger(metodo, url); nota('Endpoint consumido: ' + metodo); } // 1 y 2. éxito → Swagger
+}
+
+// Intercepta las llamadas de la pantalla de la izquierda
+function interceptar() {
   const w = app.contentWindow;
+  if (w.__interceptado) return;
+  w.__interceptado = true;
   const original = w.fetch.bind(w);
   w.fetch = async (url, opciones = {}) => {
     const r = await original(url, opciones);
     let texto = '';
     try { texto = await r.clone().text(); } catch {}
-    const enviado = opciones.body && !String(url).includes('/User') ? opciones.body : (opciones.body ? '(datos de acceso ocultos)' : '');
-    agregar((opciones.method || 'GET'), String(url), r.status, enviado, String(url).includes('/User/login') ? '(token recibido)' : texto);
+    alRegistrar((opciones.method || 'GET').toUpperCase(), String(url), r.status, opciones.body || '', texto);
     return r;
   };
-});
+}
+app.addEventListener('load', interceptar);
 </script>
 </body>
 </html>
