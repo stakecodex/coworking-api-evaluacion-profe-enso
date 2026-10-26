@@ -125,11 +125,16 @@ function aviso(texto, ok = true) {
 }
 
 async function api(ruta, metodo = 'GET', cuerpo) {
-  const r = await fetch(API + ruta, {
-    method: metodo,
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
-    body: cuerpo ? JSON.stringify(cuerpo) : undefined
-  });
+  let r;
+  try {
+    r = await fetch(API + ruta, {
+      method: metodo,
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+      body: cuerpo ? JSON.stringify(cuerpo) : undefined
+    });
+  } catch {
+    throw new Error('No se pudo conectar con el servidor. Verifica que la API esté encendida.');
+  }
   if (r.status === 401 && token) { salir(); throw new Error('Sesión expirada o no autorizado'); }
   if (r.status === 403) throw new Error('No tienes permiso para esta acción');
   const texto = await r.text();
