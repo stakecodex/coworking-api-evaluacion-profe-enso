@@ -81,14 +81,27 @@
     <div class="card">
       <h2>Todas las reservas</h2>
       <table>
-        <thead><tr><th>#</th><th>Cliente</th><th>Espacio</th><th>Inicio</th><th>Fin</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>#</th><th>Cliente</th><th>Espacio</th><th>Inicio</th><th>Fin</th>        <th>Total</th><th>Estado</th><th>Acciones</th></tr></thead>
         <tbody id="todas"></tbody>
       </table>
     </div>
     <div class="card">
       <h2>Espacios</h2>
+      <div class="fila">
+        <button class="verde" onclick="$('formEspacio').classList.toggle('oculto')">+ Crear espacio</button>
+      </div>
+      <div id="formEspacio" class="oculto" style="margin-bottom:14px">
+        <div class="fila">
+          <label>Nombre <input id="eNombre"></label>
+          <label>Tipo <select id="eCategoria"></select></label>
+          <label>Capacidad <input id="eCapacidad" type="number" min="1" value="4" style="width:80px"></label>
+          <label>Precio/hora <input id="ePrecio" type="number" min="1" value="5000" style="width:100px"></label>
+          <label>Piso <input id="ePiso" style="width:70px"></label>
+          <button onclick="crearEspacio()">Guardar espacio</button>
+        </div>
+      </div>
       <table>
-        <thead><tr><th>Espacio</th><th>Tipo</th><th>Capacidad</th><th>Precio/hora</th><th>Estado</th></tr></thead>
+        <thead><tr><th>Espacio</th><th>Tipo</th><th>Capacidad</th><th>Precio/hora</th><th>Estado</th><th>Acciones</th></tr></thead>
         <tbody id="espaciosAdmin"></tbody>
       </table>
     </div>
@@ -244,9 +257,61 @@ async function cargarAdmin() {
     const [res, esp] = await Promise.all([api('/Reservas'), api('/Espacios')]);
     $('todas').innerHTML = res.map(r => `<tr><td>${r.id}</td><td>${r.usuario}</td><td>${r.espacio}</td><td>${fmt(r.fechaInicio)}</td><td>${fmt(r.fechaFin)}</td>
       <td>${money(r.montoTotal)}</td><td><span class="tag ${r.estado}">${r.estado}</span></td>
-      <td>${r.estado === 'Pendiente' ? `<button class="verde" onclick="confirmar(${r.id})">Aprobar</button> ` : ''}${btnCancelar(r)}</td></tr>`).join('')
+      <td>${r.estado === 'Pendiente' ? `<button class="verde" onclick="confirmar(${r.id})">Aprobar</button> ` : ''}${btnCancelar(r) || '<span style="color:#888">Sin acciones</span>'}</td></tr>`).join('')
       || '<tr><td colspan="8">No hay reservas.</td></tr>';
-    $('espaciosAdmin').innerHTML = esp.map(e => `<tr><td>${e.nombre}</td><td>${e.categoria}</td><td>${e.capacidad}</td><td>${money(e.precioPorHora)}</td><td>${e.estado}</td></tr>`).join('');
+    $('espaciosAdmin').innerHTML = esp.map(e => {
+      const mant = e.estado === 'Mantenimiento';
+      return `<tr><td>${e.nombre}</td><td>${e.categoria}</td><td>${e.capacidad}</td><td>${money(e.precioPorHora)}</td><td>${e.estado}</td>
+      <td><button class="verde" onclick="reservarAdmin(${e.id})">Reservar</button>
+      <button class="gris" onclick="cambiarEstado(${e.id}, '${mant ? 'Disponible' : 'Mantenimiento'}')">${mant ? 'Habilitar' : 'Mantenimiento'}</button>
+      <button class="rojo" onclick="eliminarEspacio(${e.id})">Eliminar</button></td></tr>`;
+    }).join('');
+    if (!$('eCategoria').options.length) {
+      const cats = await api('/Espacios/categorias');
+      $('eCategoria').innerHTML = cats.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+    }
+  } catch (e) { aviso(e.message, false); }
+}
+
+async function crearEspacio() {
+  try {
+    const e = await api('/Espacios', 'POST', {
+      categoriaId: Number($('eCategoria').value), nombre: $('eNombre').value,
+      capacidad: Number($('eCapacidad').value), precioPorHora: Number($('ePrecio').value),
+      pisoUbicacion: $('ePiso').value || null, estado: 'Disponible', servicioIds: []
+    });
+    aviso(`Espacio "${e.nombre}" creado.`);
+    $('eNombre').value = ''; $('formEspacio').classList.add('oculto');
+    cargarAdmin();
+  } catch (e) { aviso(e.message, false); }
+}
+
+async function cambiarEstado(id, estado) {
+  try {
+    const e = await api('/Espacios/' + id);
+    await api('/Espacios/' + id, 'PUT', {
+      categoriaId: e.categoriaId, nombre: e.nombre, descripcion: e.descripcion, capacidad: e.capacidad,
+      precioPorHora: e.precioPorHora, pisoUbicacion: e.pisoUbicacion, estado,
+      servicioIds: e.servicioIds || []
+    });
+    aviso(`Espacio en estado ${estado}.`);
+    cargarAdmin();
+  } catch (e) { aviso(e.message, false); }
+}
+
+async function eliminarEspacio(id) {
+  if (!confirm('¿Eliminar este espacio?')) return;
+  try { await api('/Espacios/' + id, 'DELETE'); aviso('Espacio eliminado.'); cargarAdmin(); }
+  catch (e) { aviso(e.message, false); }
+}
+
+// Solo los clientes pueden reservar: con el rol Administrador la API responde 403 (demuestra los roles).
+async function reservarAdmin(id) {
+  try {
+    const d = new Date(); d.setDate(d.getDate() + 1);
+    const f = d.toISOString().slice(0, 10);
+    await api('/Reservas', 'POST', { espacioId: id, fechaInicio: f + 'T10:00:00', fechaFin: f + 'T12:00:00' });
+    aviso('Reserva creada.'); cargarAdmin();
   } catch (e) { aviso(e.message, false); }
 }
 

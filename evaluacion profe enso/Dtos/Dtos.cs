@@ -81,6 +81,7 @@ public class EspacioResponse
     public string Estado { get; set; } = null!;
     public DateTime FechaCreacion { get; set; }
     public IEnumerable<string> Servicios { get; set; } = Array.Empty<string>();
+    public IEnumerable<int> ServicioIds { get; set; } = Array.Empty<int>();
 }
 
 public class ReservaRequest : IValidatableObject

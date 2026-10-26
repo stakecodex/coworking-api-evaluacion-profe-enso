@@ -35,7 +35,8 @@ namespace Coworking.Controllers.V1
             PisoUbicacion = e.PisoUbicacion,
             Estado = e.Estado,
             FechaCreacion = e.FechaCreacion,
-            Servicios = e.Servicios.Select(s => s.Nombre).OrderBy(n => n).ToList()
+            Servicios = e.Servicios.Select(s => s.Nombre).OrderBy(n => n).ToList(),
+            ServicioIds = e.Servicios.Select(s => s.Id).ToList()
         };
 
         private async Task<ActionResult?> ValidarReferenciasAsync(EspacioRequest request, int? excluirId)
